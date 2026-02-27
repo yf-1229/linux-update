@@ -1,20 +1,25 @@
 # linux-update
 
-`apt-update-notifier` — A Linux shell script that detects upgradable apt packages,
+`update-notifier` — A Linux shell script that detects upgradable packages,
 fetches their latest changelogs from the web, and presents a human-readable
-summary so you know exactly what is changing before you run `apt upgrade`.
+summary so you know exactly what is changing before you upgrade.
+
+Supports **apt** (Debian/Ubuntu), **dnf** (Fedora/RHEL 8+/CentOS Stream), and
+**yum** (CentOS 7/older RHEL) — the package manager is detected automatically.
 
 ---
 
 ## Features
 
-- Runs `apt-get update` to refresh package lists (requires root)
-- Detects all upgradable packages via `apt list --upgradable`
-- Downloads the official Debian/Ubuntu changelog for each package using
-  `apt-get changelog` (network access required)
-- Extracts and displays the **latest** changelog entry per package
+- Auto-detects the system package manager (apt, dnf, or yum)
+- Refreshes package metadata before scanning
+- Detects all upgradable packages
+- Downloads the official changelog for each package from the internet
+- Extracts and displays only the **latest** changelog entry per package
 - Optionally sends a desktop notification via `notify-send`
 - Colour-coded terminal output; colours are suppressed when stdout is not a TTY
+- **Shell hooks** (`shell-hooks.sh`) that automatically show the summary after
+  any `apt update`, `dnf update`, `yum update`, etc. command
 
 ---
 
@@ -22,11 +27,11 @@ summary so you know exactly what is changing before you run `apt upgrade`.
 
 | Tool | Purpose | Required? |
 |------|---------|-----------|
-| `apt` / `apt-get` | Package management | **Yes** |
+| `apt-get` / `dnf` / `yum` | Package management | **Yes** (one of) |
 | Network access | Download changelogs | Yes (for changelog fetch) |
+| `dnf-plugins-core` | `dnf changelog` sub-command | Optional (dnf systems) |
+| `yum-plugin-changelog` | `yum changelog` sub-command | Optional (yum systems) |
 | `notify-send` | Desktop notification | Optional (`--desktop` only) |
-
-Tested on Ubuntu 20.04 LTS and later.
 
 ---
 
@@ -35,19 +40,21 @@ Tested on Ubuntu 20.04 LTS and later.
 ```bash
 git clone https://github.com/yf-1229/linux-update.git
 cd linux-update
-chmod +x apt-update-notifier.sh
-sudo cp apt-update-notifier.sh /usr/local/bin/apt-update-notifier
+chmod +x update-notifier.sh
+sudo cp update-notifier.sh /usr/local/bin/update-notifier
 ```
+
+The old `apt-update-notifier.sh` still works as a backward-compatible wrapper.
 
 ---
 
 ## Usage
 
 ```
-sudo apt-update-notifier [OPTIONS]
+sudo update-notifier.sh [OPTIONS]
 
 Options:
-  -n, --no-update      Skip running 'apt-get update' (use cached lists)
+  -n, --no-update      Skip refreshing package metadata
   -d, --desktop        Send a desktop notification via notify-send
   -l, --lines <N>      Number of changelog lines to show per package (default: 20)
   -h, --help           Show this help message
@@ -57,54 +64,80 @@ Options:
 
 ```bash
 # Full run: refresh package lists then show changelogs
-sudo apt-update-notifier
+sudo update-notifier.sh
 
 # Use cached package lists (no network refresh, no root needed)
-apt-update-notifier --no-update
+update-notifier.sh --no-update
 
 # Also send a desktop notification
-sudo apt-update-notifier --desktop
+sudo update-notifier.sh --desktop
 
 # Show only the first 10 lines of each changelog
-sudo apt-update-notifier --lines 10
+sudo update-notifier.sh --lines 10
 ```
 
 ### Sample output
 
 ```
-[INFO]  Refreshing package lists …
-[OK]    Package lists refreshed.
-[INFO]  Collecting upgradable packages …
+[INFO]  Detected package manager: apt
+[INFO]  Refreshing package lists ...
+[OK]    Package metadata refreshed.
+[INFO]  Collecting upgradable packages ...
 [OK]    Found 2 upgradable package(s): bash curl
 
-──────────────────────────────────────────
-Package: bash
-──────────────────────────────────────────
-bash (5.1-6ubuntu1) focal-updates; urgency=medium
-
-  * Backport upstream patch to fix CVE-2022-3715
-
- -- Ubuntu Developers <ubuntu-devel@lists.ubuntu.com>  Mon, 26 Dec 2022 ...
-
-──────────────────────────────────────────
+------------------------------------------
 Package: curl
-──────────────────────────────────────────
+------------------------------------------
 curl (7.81.0-1ubuntu1.7) focal-updates; urgency=medium
 
-  * SECURITY UPDATE: ...
+  * SECURITY UPDATE: fix for CVE-2023-XXXXX ...
+
+ -- Ubuntu Developers <ubuntu-devel@lists.ubuntu.com>  Fri, 01 Sep 2023 ...
 
 === Done ===
 ```
 
 ---
 
+## Automatic display after update commands (shell hooks)
+
+Source `shell-hooks.sh` in your shell configuration to automatically run the
+notifier every time you run a package manager update command:
+
+```bash
+# Add to ~/.bashrc or ~/.zshrc
+source /path/to/linux-update/shell-hooks.sh
+```
+
+After sourcing, the notifier runs automatically on success of:
+
+| Command | Trigger |
+|---------|---------|
+| `apt update` / `apt upgrade` | yes |
+| `apt-get update` / `apt-get upgrade` | yes |
+| `dnf update` / `dnf upgrade` / `dnf check-update` | yes |
+| `yum update` / `yum upgrade` / `yum check-update` | yes |
+
+The notifier is called with `--no-update` so it uses already-refreshed metadata
+without re-downloading. If the package manager command itself fails, the
+notifier is **not** triggered.
+
+You can override the path to the notifier binary:
+
+```bash
+export UPDATE_NOTIFIER_BIN=/path/to/update-notifier.sh
+source /path/to/linux-update/shell-hooks.sh
+```
+
+---
+
 ## Running as a cron job
 
-Add the following line to root's crontab (`sudo crontab -e`) to run every
-morning at 07:00 and log output:
+Add the following to root's crontab (`sudo crontab -e`) to run every morning
+at 07:00 and log output:
 
 ```cron
-0 7 * * * /usr/local/bin/apt-update-notifier --desktop >> /var/log/apt-update-notifier.log 2>&1
+0 7 * * * /usr/local/bin/update-notifier --desktop >> /var/log/update-notifier.log 2>&1
 ```
 
 ---
@@ -115,8 +148,19 @@ morning at 07:00 and log output:
 bash tests/test_apt_update_notifier.sh
 ```
 
-The test suite mocks `apt` and `apt-get` so it does **not** require root or
-network access.
+The test suite mocks all package managers (apt, dnf, yum) and requires no root
+access or network connectivity.
+
+---
+
+## File overview
+
+| File | Description |
+|------|-------------|
+| `update-notifier.sh` | Main script — multi-PM support (apt/dnf/yum) |
+| `apt-update-notifier.sh` | Backward-compatible wrapper for `update-notifier.sh` |
+| `shell-hooks.sh` | Shell functions for auto-run after update commands |
+| `tests/test_apt_update_notifier.sh` | Test suite (31 tests) |
 
 ---
 

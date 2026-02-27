@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # tests/test_apt_update_notifier.sh
 #
-# Unit / integration tests for apt-update-notifier.sh.
+# Unit / integration tests for update-notifier.sh (and the apt-update-notifier.sh wrapper).
 # Run with:  bash tests/test_apt_update_notifier.sh
 #
 # Exit code: 0 = all tests passed, 1 = one or more failures.
@@ -10,7 +10,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-SCRIPT="$ROOT_DIR/apt-update-notifier.sh"
+SCRIPT="$ROOT_DIR/update-notifier.sh"
+WRAPPER="$ROOT_DIR/apt-update-notifier.sh"
 
 PASS=0
 FAIL=0
@@ -58,13 +59,18 @@ assert_output_not_contains() {
 }
 
 # --------------------------------------------------------------------------- #
-# Test 1 – Script exists and is executable
+# Test 1 – Scripts exist and are executable
 # --------------------------------------------------------------------------- #
 echo "=== Test: script existence ==="
 if [ -x "$SCRIPT" ]; then
-    pass "Script is present and executable"
+    pass "update-notifier.sh is present and executable"
 else
     fail "Script is missing or not executable: $SCRIPT"
+fi
+if [ -x "$WRAPPER" ]; then
+    pass "apt-update-notifier.sh wrapper is present and executable"
+else
+    fail "Wrapper is missing or not executable: $WRAPPER"
 fi
 
 # --------------------------------------------------------------------------- #
@@ -152,6 +158,128 @@ EOF
 
 assert_exit   "exits 0 when nothing to upgrade"   0  bash "$SCRIPT" --no-update
 assert_output_contains "reports up-to-date"       "up to date"  bash "$SCRIPT" --no-update
+
+# --------------------------------------------------------------------------- #
+# Test 7 – apt-update-notifier.sh wrapper forwards to update-notifier.sh
+# --------------------------------------------------------------------------- #
+echo "=== Test: apt-update-notifier.sh wrapper ==="
+# Restore the mock apt with two upgradable packages for wrapper test
+cat > "$MOCK_BIN_DIR/apt" <<'EOF'
+#!/usr/bin/env bash
+if [ "${1:-}" = "list" ] && [ "${2:-}" = "--upgradable" ]; then
+    echo "Listing... Done"
+    echo "bash/focal-updates 5.1-6ubuntu1 amd64 [upgradable from: 5.1-6ubuntu0]"
+fi
+exit 0
+EOF
+
+assert_exit   "wrapper exits 0"                          0  bash "$WRAPPER" --no-update
+assert_output_contains "wrapper forwards to main script" "update-notifier"  bash "$WRAPPER" --help
+
+# --------------------------------------------------------------------------- #
+# Test 8 – dnf-based system: detect PM and list upgradable packages
+# --------------------------------------------------------------------------- #
+echo "=== Test: dnf package manager ==="
+
+DNF_MOCK_DIR="$(mktemp -d)"
+trap 'rm -rf "$MOCK_BIN_DIR" "$DNF_MOCK_DIR"' EXIT
+
+cat > "$DNF_MOCK_DIR/dnf" <<'EOF'
+#!/usr/bin/env bash
+case "${1:-}" in
+    makecache) exit 0 ;;
+    list)
+        if [ "${2:-}" = "--upgrades" ]; then
+            echo "Last metadata expiration check:"
+            echo "Available Upgrades"
+            echo "vim-enhanced.x86_64   2:9.0.1-1.fc38  updates"
+            echo "curl.x86_64           7.85.0-1.fc38   updates"
+        fi
+        ;;
+    changelog)
+        pkg="${2:-unknown}"
+        printf "* Mon Jan 01 2024 Test User <test@example.com> - 1.0-2\n- Fake dnf changelog for %s\n" "$pkg"
+        ;;
+    updateinfo) ;;
+esac
+exit 0
+EOF
+chmod +x "$DNF_MOCK_DIR/dnf"
+
+# Force PM=dnf via env var; prepend mock dir so 'dnf' resolves to the mock
+assert_exit   "dnf: exits 0 with mock packages" 0 \
+    env UPDATE_NOTIFIER_PM=dnf PATH="$DNF_MOCK_DIR:$PATH" bash "$SCRIPT" --no-update
+assert_output_contains "dnf: detects dnf PM" "dnf" \
+    env UPDATE_NOTIFIER_PM=dnf PATH="$DNF_MOCK_DIR:$PATH" bash "$SCRIPT" --no-update
+assert_output_contains "dnf: lists vim-enhanced" "vim-enhanced" \
+    env UPDATE_NOTIFIER_PM=dnf PATH="$DNF_MOCK_DIR:$PATH" bash "$SCRIPT" --no-update
+assert_output_contains "dnf: shows changelog entry" "Fake dnf changelog" \
+    env UPDATE_NOTIFIER_PM=dnf PATH="$DNF_MOCK_DIR:$PATH" bash "$SCRIPT" --no-update
+
+# --------------------------------------------------------------------------- #
+# Test 9 – yum-based system: detect PM and list upgradable packages
+# --------------------------------------------------------------------------- #
+echo "=== Test: yum package manager ==="
+
+YUM_MOCK_DIR="$(mktemp -d)"
+trap 'rm -rf "$MOCK_BIN_DIR" "$DNF_MOCK_DIR" "$YUM_MOCK_DIR"' EXIT
+
+cat > "$YUM_MOCK_DIR/yum" <<'EOF'
+#!/usr/bin/env bash
+case "${1:-}" in
+    makecache) exit 0 ;;
+    list)
+        if [ "${2:-}" = "updates" ]; then
+            echo "Updated Packages"
+            echo "openssl.x86_64   1:1.1.1k-9.el7  updates"
+            echo "bash.x86_64      4.2.46-35.el7   base"
+        fi
+        ;;
+    changelog)
+        pkg="${2:-unknown}"
+        printf "* Mon Jan 01 2024 Test User <test@example.com> - 1.0-2\n- Fake yum changelog for %s\n" "$pkg"
+        ;;
+esac
+exit 0
+EOF
+chmod +x "$YUM_MOCK_DIR/yum"
+
+assert_exit   "yum: exits 0 with mock packages" 0 \
+    env UPDATE_NOTIFIER_PM=yum PATH="$YUM_MOCK_DIR:$PATH" bash "$SCRIPT" --no-update
+assert_output_contains "yum: detects yum PM" "yum" \
+    env UPDATE_NOTIFIER_PM=yum PATH="$YUM_MOCK_DIR:$PATH" bash "$SCRIPT" --no-update
+assert_output_contains "yum: lists openssl" "openssl" \
+    env UPDATE_NOTIFIER_PM=yum PATH="$YUM_MOCK_DIR:$PATH" bash "$SCRIPT" --no-update
+
+# --------------------------------------------------------------------------- #
+# Test 10 – No package manager found: exits with error
+# --------------------------------------------------------------------------- #
+echo "=== Test: no package manager ==="
+assert_exit   "exits non-zero when no PM found" 1 \
+    env UPDATE_NOTIFIER_PM="" bash "$SCRIPT" --no-update
+assert_output_contains "reports missing PM" "No supported package manager" \
+    env UPDATE_NOTIFIER_PM="" bash "$SCRIPT" --no-update
+
+# --------------------------------------------------------------------------- #
+# Test 11 – shell-hooks.sh: sourcing defines wrapper functions
+# --------------------------------------------------------------------------- #
+echo "=== Test: shell-hooks.sh ==="
+HOOKS="$ROOT_DIR/shell-hooks.sh"
+if [ -f "$HOOKS" ]; then
+    pass "shell-hooks.sh is present"
+else
+    fail "shell-hooks.sh is missing: $HOOKS"
+fi
+
+# Source hooks in a subshell and verify that the functions are defined
+assert_output_contains "hooks define apt function"     "apt is a function" \
+    bash -c "source '$HOOKS'; type apt"
+assert_output_contains "hooks define apt-get function" "apt-get is a function" \
+    bash -c "source '$HOOKS'; type apt-get"
+assert_output_contains "hooks define dnf function"     "dnf is a function" \
+    bash -c "source '$HOOKS'; type dnf"
+assert_output_contains "hooks define yum function"     "yum is a function" \
+    bash -c "source '$HOOKS'; type yum"
 
 # --------------------------------------------------------------------------- #
 # Summary
