@@ -16,7 +16,7 @@ Supports **apt** (Debian/Ubuntu), **dnf** (Fedora/RHEL 8+/CentOS Stream), and
 - Detects all upgradable packages
 - Downloads the official changelog for each package from the internet
 - Extracts and displays only the **latest** changelog entry per package
-- Optionally sends a desktop notification via `notify-send`
+- Displays the summary in a pager (`less`) when run interactively from a terminal
 - Colour-coded terminal output; colours are suppressed when stdout is not a TTY
 - **Shell hooks** (`shell-hooks.sh`) that automatically show the summary after
   any `apt update`, `dnf update`, `yum update`, etc. command
@@ -31,7 +31,7 @@ Supports **apt** (Debian/Ubuntu), **dnf** (Fedora/RHEL 8+/CentOS Stream), and
 | Network access | Download changelogs | Yes (for changelog fetch) |
 | `dnf-plugins-core` | `dnf changelog` sub-command | Optional (dnf systems) |
 | `yum-plugin-changelog` | `yum changelog` sub-command | Optional (yum systems) |
-| `notify-send` | Desktop notification | Optional (`--desktop` only) |
+| `less` | Pager for summary display | Optional (falls back to `cat`) |
 
 ---
 
@@ -55,7 +55,6 @@ sudo update-notifier.sh [OPTIONS]
 
 Options:
   -n, --no-update      Skip refreshing package metadata
-  -d, --desktop        Send a desktop notification via notify-send
   -l, --lines <N>      Number of changelog lines to show per package (default: 20)
   -h, --help           Show this help message
 ```
@@ -68,9 +67,6 @@ sudo update-notifier.sh
 
 # Use cached package lists (no network refresh, no root needed)
 update-notifier.sh --no-update
-
-# Also send a desktop notification
-sudo update-notifier.sh --desktop
 
 # Show only the first 10 lines of each changelog
 sudo update-notifier.sh --lines 10
@@ -137,7 +133,7 @@ Add the following to root's crontab (`sudo crontab -e`) to run every morning
 at 07:00 and log output:
 
 ```cron
-0 7 * * * /usr/local/bin/update-notifier --desktop >> /var/log/update-notifier.log 2>&1
+0 7 * * * /usr/local/bin/update-notifier >> /var/log/update-notifier.log 2>&1
 ```
 
 ---

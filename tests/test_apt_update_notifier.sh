@@ -79,7 +79,7 @@ fi
 echo "=== Test: --help flag ==="
 assert_exit "--help exits 0"                          0  bash "$SCRIPT" --help
 assert_output_contains "--help mentions -n"           "\-n"  bash "$SCRIPT" --help
-assert_output_contains "--help mentions --desktop"    "\-d"  bash "$SCRIPT" --help
+assert_output_not_contains "--help does not mention --desktop" "\-d"  bash "$SCRIPT" --help
 assert_output_contains "--help mentions --lines"      "\-l"  bash "$SCRIPT" --help
 
 # --------------------------------------------------------------------------- #
@@ -87,6 +87,7 @@ assert_output_contains "--help mentions --lines"      "\-l"  bash "$SCRIPT" --he
 # --------------------------------------------------------------------------- #
 echo "=== Test: unknown option ==="
 assert_exit "unknown option exits non-zero" 1 bash "$SCRIPT" --this-option-does-not-exist
+assert_exit "--desktop is rejected as unknown option" 1 bash "$SCRIPT" --desktop
 
 # --------------------------------------------------------------------------- #
 # Test 4 – --no-update flag skips apt-get update (no root needed)
@@ -141,6 +142,17 @@ output=$(bash "$SCRIPT" --no-update --lines 1 2>&1)
 # the trailer line that contains the maintainer email
 assert_output_not_contains "--lines 1 truncates changelog" "test@example.com" \
     bash "$SCRIPT" --no-update --lines 1
+
+# --------------------------------------------------------------------------- #
+# Test 5b – Summary is displayed via cat when not a TTY (pager fallback)
+# --------------------------------------------------------------------------- #
+echo "=== Test: pager fallback (non-TTY outputs summary via cat) ==="
+assert_output_contains "summary header present in non-TTY output" "update-notifier summary" \
+    bash "$SCRIPT" --no-update
+assert_output_contains "Done marker present in non-TTY output" "Done" \
+    bash "$SCRIPT" --no-update
+assert_output_not_contains "no desktop notification in output" "Desktop notification" \
+    bash "$SCRIPT" --no-update
 
 # --------------------------------------------------------------------------- #
 # Test 6 – No upgradable packages: exits 0 and reports up-to-date

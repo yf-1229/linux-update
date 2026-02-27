@@ -15,13 +15,11 @@
 #
 # Options:
 #   -n, --no-update      Skip refreshing package metadata
-#   -d, --desktop        Send a desktop notification via notify-send
 #   -l, --lines <N>      Number of changelog lines to show per package (default: 20)
 #   -h, --help           Show this help message
 #
 # Requirements:
 #   One of: apt-get, dnf, yum
-#   notify-send (optional – needed only with --desktop)
 
 set -euo pipefail
 
@@ -29,7 +27,6 @@ set -euo pipefail
 # Defaults
 # --------------------------------------------------------------------------- #
 RUN_UPDATE=true
-DESKTOP_NOTIFY=false
 MAX_LINES=20
 
 # --------------------------------------------------------------------------- #
@@ -65,7 +62,6 @@ error()   { echo -e "${RED}[ERROR]${RESET} $*" >&2; }
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -n|--no-update)   RUN_UPDATE=false; shift ;;
-        -d|--desktop)     DESKTOP_NOTIFY=true; shift ;;
         -l|--lines)       MAX_LINES="${2:?'--lines requires a number'}"; shift 2 ;;
         -h|--help)        usage ;;
         *) error "Unknown option: $1"; usage 1 ;;
@@ -230,39 +226,33 @@ fetch_changelog_entry() {
 }
 
 # --------------------------------------------------------------------------- #
-# Step 4 – Build and print the summary
+# Step 4 – Build the summary and display via pager
 # --------------------------------------------------------------------------- #
-echo -e "${BOLD}=== update-notifier summary – $(date '+%Y-%m-%d %H:%M:%S') ===${RESET}"
-echo -e "Package manager: ${GREEN}${PM}${RESET}"
-echo -e "Upgradable packages (${#UPGRADABLE[@]}): ${UPGRADABLE[*]}"
-echo
+SUMMARY_FILE="$(mktemp)"
+_cleanup_summary() { rm -f "$SUMMARY_FILE"; }
+trap _cleanup_summary EXIT
 
-for pkg in "${UPGRADABLE[@]}"; do
-    echo -e "${BOLD}──────────────────────────────────────────${RESET}"
-    echo -e "${BOLD}Package: ${GREEN}${pkg}${RESET}"
-    echo -e "${BOLD}──────────────────────────────────────────${RESET}"
-
-    changelog=$(fetch_changelog_entry "$pkg")
-    echo "$changelog"
+{
+    echo -e "${BOLD}=== update-notifier summary – $(date '+%Y-%m-%d %H:%M:%S') ===${RESET}"
+    echo -e "Package manager: ${GREEN}${PM}${RESET}"
+    echo -e "Upgradable packages (${#UPGRADABLE[@]}): ${UPGRADABLE[*]}"
     echo
-done
 
-# --------------------------------------------------------------------------- #
-# Step 5 – Desktop notification (optional)
-# --------------------------------------------------------------------------- #
-if [ "$DESKTOP_NOTIFY" = true ]; then
-    if ! command -v notify-send &>/dev/null; then
-        warn "'notify-send' not found; skipping desktop notification."
-    else
-        NOTIFY_BODY="$(printf '%d package(s) have updates available:\n%s' \
-            "${#UPGRADABLE[@]}" "${UPGRADABLE[*]}")"
-        notify-send \
-            --urgency=normal \
-            --icon=software-update-available \
-            "Updates Available ($PM)" \
-            "$NOTIFY_BODY"
-        success "Desktop notification sent."
-    fi
+    for pkg in "${UPGRADABLE[@]}"; do
+        echo -e "${BOLD}──────────────────────────────────────────${RESET}"
+        echo -e "${BOLD}Package: ${GREEN}${pkg}${RESET}"
+        echo -e "${BOLD}──────────────────────────────────────────${RESET}"
+
+        changelog=$(fetch_changelog_entry "$pkg")
+        echo "$changelog"
+        echo
+    done
+
+    echo -e "${BOLD}=== Done ===${RESET}"
+} > "$SUMMARY_FILE"
+
+if [ -t 1 ] && command -v less &>/dev/null; then
+    less -R "$SUMMARY_FILE"
+else
+    cat "$SUMMARY_FILE"
 fi
-
-echo -e "${BOLD}=== Done ===${RESET}"
