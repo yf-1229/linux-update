@@ -31,7 +31,6 @@ When `logapt` is executed, it outputs detailed command logs and also saves them.
 ```bash
 git clone https://github.com/yf-1229/linux-update.git
 cd linux-update
-chmod +x update-notifier.sh
 chmod +x logapt
 sudo cp logapt /usr/local/bin/logapt
 ```
