@@ -29,21 +29,28 @@ if ! command -v apt >/dev/null 2>&1; then
     exit 1
 fi
 
-log_dir="${LOGAPT_LOG_DIR:-${HOME:-/tmp}/.logapt}"
+cmd=(apt "$subcmd" "$@")
+printf -v cmd_display '%q ' "${cmd[@]}"
+
+log_dir="${LOGAPT_LOG_DIR:-${HOME:?HOME not set}/.logapt}"
 mkdir -p "$log_dir"
 log_file="$log_dir/${subcmd}-$(date +%Y%m%d-%H%M%S).log"
 
 {
     echo "[logapt] started: $(date -Iseconds)"
-    echo "[logapt] command: apt $subcmd $*"
+    echo "[logapt] command: ${cmd_display% }"
 } | tee -a "$log_file"
 
-if apt "$subcmd" "$@" 2>&1 | tee -a "$log_file"; then
+set +e
+"${cmd[@]}" 2>&1 | tee -a "$log_file"
+apt_exit_code=${PIPESTATUS[0]}
+set -e
+
+if [ "$apt_exit_code" -eq 0 ]; then
     echo "[logapt] finished successfully"
     echo "[logapt] log: $log_file"
 else
-    status=${PIPESTATUS[0]}
-    echo "[logapt] failed with exit code $status" | tee -a "$log_file" >&2
+    echo "[logapt] failed with exit code $apt_exit_code" | tee -a "$log_file" >&2
     echo "[logapt] log: $log_file" | tee -a "$log_file" >&2
-    exit "$status"
+    exit "$apt_exit_code"
 fi

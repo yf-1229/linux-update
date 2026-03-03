@@ -65,13 +65,15 @@ assert_output_contains "logapt update runs apt update" "MOCK apt update" \
     env PATH="$MOCK_BIN_DIR:$PATH" LOGAPT_LOG_DIR="$TMP_LOG_DIR" bash "$SCRIPT" update
 assert_output_contains "logapt install runs apt install" "MOCK apt install curl" \
     env PATH="$MOCK_BIN_DIR:$PATH" LOGAPT_LOG_DIR="$TMP_LOG_DIR" bash "$SCRIPT" install curl
+assert_output_contains "logapt install forwards multiple packages" "MOCK apt install curl git" \
+    env PATH="$MOCK_BIN_DIR:$PATH" LOGAPT_LOG_DIR="$TMP_LOG_DIR" bash "$SCRIPT" install curl git
 assert_output_contains "logapt prints log file location" "\\[logapt\\] log:" \
     env PATH="$MOCK_BIN_DIR:$PATH" LOGAPT_LOG_DIR="$TMP_LOG_DIR" bash "$SCRIPT" update
 
 echo "=== Test: wrappers forward to logapt ==="
-assert_output_contains "update-notifier.sh wrapper forwards to logapt help" "logapt update" \
+assert_output_contains "update-notifier.sh wrapper shows logapt usage" "logapt update" \
     bash "$UPDATE_WRAPPER" --help
-assert_output_contains "apt-update-notifier.sh wrapper forwards to logapt help" "logapt update" \
+assert_output_contains "apt-update-notifier.sh wrapper shows logapt usage" "logapt update" \
     bash "$APT_WRAPPER" --help
 
 echo
@@ -79,3 +81,4 @@ echo "Results: $PASS passed, $FAIL failed"
 if [ "$FAIL" -gt 0 ]; then
     exit 1
 fi
+exit 0
