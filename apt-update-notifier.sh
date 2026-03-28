@@ -1,5 +1,0 @@
-#!/usr/bin/env bash
-# apt-update-notifier.sh (compat wrapper)
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-exec bash "$SCRIPT_DIR/logapt" "$@"

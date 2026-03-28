@@ -52,6 +52,12 @@ trap 'rm -rf "$MOCK_BIN_DIR" "$TMP_LOG_DIR"' EXIT
 
 cat > "$MOCK_BIN_DIR/apt" <<'EOF'
 #!/usr/bin/env bash
+if [ "$1" = "list" ] && [ "$2" = "--upgradable" ]; then
+echo "Listing..."
+echo "curl/stable 8.0 amd64 [upgradable from: 7.0]"
+echo "git/stable 2.0 amd64 [upgradable from: 1.0]"
+exit 0
+fi
 echo "MOCK apt $*"
 exit 0
 EOF
@@ -68,6 +74,12 @@ assert_output_contains "logapt install forwards multiple packages" "MOCK apt ins
     env PATH="$MOCK_BIN_DIR:$PATH" LOGAPT_LOG_DIR="$TMP_LOG_DIR" bash "$SCRIPT" install curl git
 assert_output_contains "logapt prints log file location" "\[logapt\] log:" \
     env PATH="$MOCK_BIN_DIR:$PATH" LOGAPT_LOG_DIR="$TMP_LOG_DIR" bash "$SCRIPT" update
+assert_output_contains "logapt update shows summary count" "\[logapt\] update summary: 2 upgradable package(s)" \
+    env PATH="$MOCK_BIN_DIR:$PATH" LOGAPT_LOG_DIR="$TMP_LOG_DIR" bash "$SCRIPT" update
+assert_output_contains "logapt update shows summarized package names" "\[logapt\]   - curl" \
+    env PATH="$MOCK_BIN_DIR:$PATH" LOGAPT_LOG_DIR="$TMP_LOG_DIR" bash "$SCRIPT" update
+assert_output_contains "logapt install keeps using apt install" "MOCK apt install curl" \
+    env PATH="$MOCK_BIN_DIR:$PATH" LOGAPT_LOG_DIR="$TMP_LOG_DIR" bash "$SCRIPT" install curl
 
 echo
 echo "Results: $PASS passed, $FAIL failed"

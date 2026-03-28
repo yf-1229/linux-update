@@ -32,6 +32,34 @@ if ! command -v pacman >/dev/null 2>&1; then
     exit 1
 fi
 
+summarize_update() {
+    local log_file="$1"
+    local updates_output update_count
+
+    set +e
+    updates_output="$(pacman -Qu 2>/dev/null)"
+    set -e
+
+    update_count="$(
+        printf '%s\n' "$updates_output" \
+        | sed '/^[[:space:]]*$/d' \
+        | awk 'END { print NR + 0 }'
+    )"
+
+    echo "[logpacman] update summary: ${update_count} upgradable package(s)" | tee -a "$log_file"
+
+    if [ "$update_count" -gt 0 ]; then
+        printf '%s\n' "$updates_output" \
+            | sed '/^[[:space:]]*$/d' \
+            | awk 'NR<=5 { print "[logpacman]   - " $1 }' \
+            | tee -a "$log_file"
+
+        if [ "$update_count" -gt 5 ]; then
+            echo "[logpacman]   ...and $((update_count - 5)) more" | tee -a "$log_file"
+        fi
+    fi
+}
+
 if [ "$subcmd" = "update" ]; then
     cmd=(pacman -Syu "$@")
 else
@@ -54,6 +82,9 @@ pacman_exit_code=${PIPESTATUS[0]}
 set -e
 
 if [ "$pacman_exit_code" -eq 0 ]; then
+    if [ "$subcmd" = "update" ]; then
+        summarize_update "$log_file"
+    fi
     echo "[logpacman] finished successfully"
     echo "[logpacman] log: $log_file"
 else

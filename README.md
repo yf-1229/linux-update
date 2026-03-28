@@ -27,6 +27,7 @@ By adding a shell alias you can make even the plain `apt update` (or `brew updat
   - `logbrew`  — `update`, `upgrade`, `install`
   - `logpacman`— `update` (→ `pacman -Syu`), `install` (→ `pacman -S`)
 - Detailed logs are shown on the terminal **and** saved to a file
+- `update` completes with a short update summary (upgradable package count and sample package names)
 - Log directory is configurable via environment variable (e.g. `LOGAPT_LOG_DIR`)
 
 ---
@@ -192,8 +193,6 @@ bash yum/tests/test_logyum.sh
 bash brew/tests/test_logbrew.sh
 bash pacman/tests/test_logpacman.sh
 
-# legacy test (apt only, kept for backward compatibility)
-bash tests/test_apt_update_notifier.sh
 ```
 
 ---
@@ -218,11 +217,7 @@ linux-update/
 │   ├── logpacman                   # pacman wrapper
 │   └── tests/
 │       └── test_logpacman.sh
-├── logapt                          # (legacy) same as apt/logapt
-├── update-notifier.sh              # (legacy) compatibility wrapper
-├── apt-update-notifier.sh          # (legacy) compatibility wrapper
 └── tests/
-    └── test_apt_update_notifier.sh # (legacy) test suite
 ```
 
 ---
