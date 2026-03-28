@@ -33,7 +33,7 @@ fi
 cmd=(brew "$subcmd" "$@")
 printf -v cmd_display '%q ' "${cmd[@]}"
 
-log_dir="${LOGBREW_LOG_DIR:-${HOME:?HOME not set}/.logbrew}"
+log_dir="${LOGBREW_LOG_DIR:-${HOME:?HOME environment variable is not set}/.logbrew}"
 mkdir -p "$log_dir"
 log_file="$log_dir/${subcmd}-$(date +%Y%m%d-%H%M%S).log"
 

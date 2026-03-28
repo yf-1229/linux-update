@@ -39,7 +39,7 @@ else
 fi
 printf -v cmd_display '%q ' "${cmd[@]}"
 
-log_dir="${LOGPACMAN_LOG_DIR:-${HOME:?HOME not set}/.logpacman}"
+log_dir="${LOGPACMAN_LOG_DIR:-${HOME:?HOME environment variable is not set}/.logpacman}"
 mkdir -p "$log_dir"
 log_file="$log_dir/${subcmd}-$(date +%Y%m%d-%H%M%S).log"
 
