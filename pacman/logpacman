@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+usage() {
+    cat <<'EOF'
+Usage:
+  logpacman update [PACMAN_OPTIONS...]
+  logpacman install <PACKAGE...> [PACMAN_OPTIONS...]
+
+  update  -> runs: pacman -Syu
+  install -> runs: pacman -S <PACKAGE...>
+EOF
+    exit "${1:-0}"
+}
+
+if [ $# -lt 1 ]; then
+    usage 1
+fi
+
+subcmd="$1"
+shift
+
+case "$subcmd" in
+    update|install) ;;
+    -h|--help) usage 0 ;;
+    *) echo "[logpacman] Unsupported subcommand: $subcmd" >&2; usage 1 ;;
+esac
+
+if ! command -v pacman >/dev/null 2>&1; then
+    echo "[logpacman] pacman command not found." >&2
+    exit 1
+fi
+
+if [ "$subcmd" = "update" ]; then
+    cmd=(pacman -Syu "$@")
+else
+    cmd=(pacman -S "$@")
+fi
+printf -v cmd_display '%q ' "${cmd[@]}"
+
+log_dir="${LOGPACMAN_LOG_DIR:-${HOME:?HOME environment variable is not set}/.logpacman}"
+mkdir -p "$log_dir"
+log_file="$log_dir/${subcmd}-$(date +%Y%m%d-%H%M%S).log"
+
+{
+    echo "[logpacman] started: $(date -Iseconds)"
+    echo "[logpacman] command: ${cmd_display% }"
+} | tee -a "$log_file"
+
+set +e
+"${cmd[@]}" 2>&1 | tee -a "$log_file"
+pacman_exit_code=${PIPESTATUS[0]}
+set -e
+
+if [ "$pacman_exit_code" -eq 0 ]; then
+    echo "[logpacman] finished successfully"
+    echo "[logpacman] log: $log_file"
+else
+    echo "[logpacman] failed with exit code $pacman_exit_code" | tee -a "$log_file" >&2
+    echo "[logpacman] log: $log_file" | tee -a "$log_file" >&2
+    exit "$pacman_exit_code"
+fi
