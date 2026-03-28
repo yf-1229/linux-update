@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+usage() {
+    cat <<'EOF'
+Usage:
+  logapt update [APT_OPTIONS...]
+  logapt install <PACKAGE...> [APT_OPTIONS...]
+EOF
+    exit "${1:-0}"
+}
+
+if [ $# -lt 1 ]; then
+    usage 1
+fi
+
+subcmd="$1"
+shift
+
+case "$subcmd" in
+    update|install) ;;
+    -h|--help) usage 0 ;;
+    *) echo "[logapt] Unsupported subcommand: $subcmd" >&2; usage 1 ;;
+esac
+
+if ! command -v apt >/dev/null 2>&1; then
+    echo "[logapt] apt command not found." >&2
+    exit 1
+fi
+
+cmd=(apt "$subcmd" "$@")
+printf -v cmd_display '%q ' "${cmd[@]}"
+
+log_dir="${LOGAPT_LOG_DIR:-${HOME:?HOME not set}/.logapt}"
+mkdir -p "$log_dir"
+log_file="$log_dir/${subcmd}-$(date +%Y%m%d-%H%M%S).log"
+
+{
+    echo "[logapt] started: $(date -Iseconds)"
+    echo "[logapt] command: ${cmd_display% }"
+} | tee -a "$log_file"
+
+set +e
+"${cmd[@]}" 2>&1 | tee -a "$log_file"
+apt_exit_code=${PIPESTATUS[0]}
+set -e
+
+if [ "$apt_exit_code" -eq 0 ]; then
+    echo "[logapt] finished successfully"
+    echo "[logapt] log: $log_file"
+else
+    echo "[logapt] failed with exit code $apt_exit_code" | tee -a "$log_file" >&2
+    echo "[logapt] log: $log_file" | tee -a "$log_file" >&2
+    exit "$apt_exit_code"
+fi

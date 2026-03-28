@@ -1,89 +1,229 @@
 # linux-update
 
-`logapt` — A minimal wrapper for **apt** that runs only:
-- `apt update`
-- `apt install`
+Minimal logging wrappers for popular package managers — **apt**, **yum**, **brew**, and **pacman**.
 
-When `logapt` is executed, it outputs detailed command logs and also saves them.
+Each wrapper runs the underlying package manager, prints timestamped log lines to the terminal, and saves a log file.  
+By adding a shell alias you can make even the plain `apt update` (or `brew update`, etc.) go through the wrapper automatically.
+
+---
+
+## Supported package managers
+
+| Directory | Script | Package manager | Platforms |
+|-----------|--------|-----------------|-----------|
+| `apt/` | `logapt` | apt | Debian, Ubuntu, … |
+| `yum/` | `logyum` | yum | RHEL, CentOS, Fedora, … |
+| `brew/` | `logbrew` | Homebrew | macOS, Linux |
+| `pacman/` | `logpacman` | pacman | Arch Linux, Manjaro, … |
 
 ---
 
 ## Features
 
-- Supports **apt only**
-- Single command name: `logapt`
-- Supports only `update` and `install`
-- Detailed logs are shown **only when `logapt` is run**
-- Logs are also saved to `${LOGAPT_LOG_DIR:-$HOME/.logapt}`
-
----
-
-## Requirements
-
-| Tool | Purpose | Required? |
-|------|---------|-----------|
-| `apt` | Package management | **Yes** |
+- One script per package manager, each in its own directory
+- Supported subcommands per wrapper:
+  - `logapt`   — `update`, `install`
+  - `logyum`   — `update`, `install`
+  - `logbrew`  — `update`, `upgrade`, `install`
+  - `logpacman`— `update` (→ `pacman -Syu`), `install` (→ `pacman -S`)
+- Detailed logs are shown on the terminal **and** saved to a file
+- Log directory is configurable via environment variable (e.g. `LOGAPT_LOG_DIR`)
 
 ---
 
 ## Installation
 
+Clone the repository and install the script(s) you need:
+
 ```bash
 git clone https://github.com/yf-1229/linux-update.git
 cd linux-update
-chmod +x logapt
-sudo cp logapt /usr/local/bin/logapt
 ```
 
-`update-notifier.sh` / `apt-update-notifier.sh` remain thin wrappers to `logapt`.
+### apt (Debian/Ubuntu)
+
+```bash
+chmod +x apt/logapt
+sudo cp apt/logapt /usr/local/bin/logapt
+```
+
+### yum (RHEL/CentOS/Fedora)
+
+```bash
+chmod +x yum/logyum
+sudo cp yum/logyum /usr/local/bin/logyum
+```
+
+### brew (Homebrew)
+
+```bash
+chmod +x brew/logbrew
+sudo cp brew/logbrew /usr/local/bin/logbrew
+```
+
+### pacman (Arch Linux)
+
+```bash
+chmod +x pacman/logpacman
+sudo cp pacman/logpacman /usr/local/bin/logpacman
+```
 
 ---
 
 ## Usage
 
 ```bash
+# apt
 logapt update
 logapt install curl
+
+# yum
+logyum update
+logyum install curl
+
+# brew
+logbrew update
+logbrew upgrade
+logbrew install curl
+
+# pacman
+logpacman update          # runs: pacman -Syu
+logpacman install curl    # runs: pacman -S curl
 ```
 
-### Examples
+Override the log directory:
 
 ```bash
-# show apt output with detailed log lines and save log file
 LOGAPT_LOG_DIR=/tmp/logapt logapt update
+LOGYUM_LOG_DIR=/tmp/logyum logyum update
+LOGBREW_LOG_DIR=/tmp/logbrew logbrew update
+LOGPACMAN_LOG_DIR=/tmp/logpacman logpacman update
 ```
+
+---
+
+## Shell integration — run the wrapper automatically
+
+By adding an alias to your shell config, the regular package manager command (e.g. `apt update`) will automatically go through the logging wrapper.
+
+### bash (`~/.bashrc`)
+
+```bash
+# apt
+alias apt='logapt'
+
+# yum
+alias yum='logyum'
+
+# brew
+alias brew='logbrew'
+
+# pacman
+alias pacman='logpacman'
+```
+
+Reload: `source ~/.bashrc`
+
+### zsh (`~/.zshrc`)
+
+```zsh
+# apt
+alias apt='logapt'
+
+# yum
+alias yum='logyum'
+
+# brew
+alias brew='logbrew'
+
+# pacman
+alias pacman='logpacman'
+```
+
+Reload: `source ~/.zshrc`
+
+### fish (`~/.config/fish/config.fish`)
+
+```fish
+# apt
+alias apt='logapt'
+
+# yum
+alias yum='logyum'
+
+# brew
+alias brew='logbrew'
+
+# pacman
+alias pacman='logpacman'
+```
+
+Reload: `source ~/.config/fish/config.fish`
+
+> **Note:** After setting an alias, `apt update` will call `logapt update` transparently — you will see the timestamped log output and a saved log file every time.
 
 ---
 
 ## Running as a cron job
 
-Add the following to root's crontab (`sudo crontab -e`) to run every morning
-at 07:00 and log output:
-
 ```cron
+# apt — every morning at 07:00
 0 7 * * * /usr/local/bin/logapt update >> /var/log/logapt.log 2>&1
+
+# yum — every morning at 07:00
+0 7 * * * /usr/local/bin/logyum update >> /var/log/logyum.log 2>&1
+
+# brew — every morning at 07:00
+0 7 * * * /usr/local/bin/logbrew update >> /var/log/logbrew.log 2>&1
+
+# pacman — every morning at 07:00
+0 7 * * * /usr/local/bin/logpacman update >> /var/log/logpacman.log 2>&1
 ```
 
 ---
 
 ## Running the tests
 
+Each package manager has its own test suite that mocks the underlying command and requires no root access.
+
 ```bash
+bash apt/tests/test_logapt.sh
+bash yum/tests/test_logyum.sh
+bash brew/tests/test_logbrew.sh
+bash pacman/tests/test_logpacman.sh
+
+# legacy test (apt only, kept for backward compatibility)
 bash tests/test_apt_update_notifier.sh
 ```
 
-The test suite mocks `apt` and requires no root access.
-
 ---
 
-## File overview
+## Repository structure
 
-| File | Description |
-|------|-------------|
-| `logapt` | Main script (apt-only, `update`/`install`) |
-| `update-notifier.sh` | Compatibility wrapper for `logapt` |
-| `apt-update-notifier.sh` | Compatibility wrapper for `logapt` |
-| `tests/test_apt_update_notifier.sh` | Test suite |
+```
+linux-update/
+├── apt/
+│   ├── logapt                      # apt wrapper
+│   └── tests/
+│       └── test_logapt.sh
+├── yum/
+│   ├── logyum                      # yum wrapper
+│   └── tests/
+│       └── test_logyum.sh
+├── brew/
+│   ├── logbrew                     # Homebrew wrapper
+│   └── tests/
+│       └── test_logbrew.sh
+├── pacman/
+│   ├── logpacman                   # pacman wrapper
+│   └── tests/
+│       └── test_logpacman.sh
+├── logapt                          # (legacy) same as apt/logapt
+├── update-notifier.sh              # (legacy) compatibility wrapper
+├── apt-update-notifier.sh          # (legacy) compatibility wrapper
+└── tests/
+    └── test_apt_update_notifier.sh # (legacy) test suite
+```
 
 ---
 

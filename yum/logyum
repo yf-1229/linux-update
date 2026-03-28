@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+usage() {
+    cat <<'EOF'
+Usage:
+  logyum update [YUM_OPTIONS...]
+  logyum install <PACKAGE...> [YUM_OPTIONS...]
+EOF
+    exit "${1:-0}"
+}
+
+if [ $# -lt 1 ]; then
+    usage 1
+fi
+
+subcmd="$1"
+shift
+
+case "$subcmd" in
+    update|install) ;;
+    -h|--help) usage 0 ;;
+    *) echo "[logyum] Unsupported subcommand: $subcmd" >&2; usage 1 ;;
+esac
+
+if ! command -v yum >/dev/null 2>&1; then
+    echo "[logyum] yum command not found." >&2
+    exit 1
+fi
+
+cmd=(yum "$subcmd" "$@")
+printf -v cmd_display '%q ' "${cmd[@]}"
+
+log_dir="${LOGYUM_LOG_DIR:-${HOME:?HOME not set}/.logyum}"
+mkdir -p "$log_dir"
+log_file="$log_dir/${subcmd}-$(date +%Y%m%d-%H%M%S).log"
+
+{
+    echo "[logyum] started: $(date -Iseconds)"
+    echo "[logyum] command: ${cmd_display% }"
+} | tee -a "$log_file"
+
+set +e
+"${cmd[@]}" 2>&1 | tee -a "$log_file"
+yum_exit_code=${PIPESTATUS[0]}
+set -e
+
+if [ "$yum_exit_code" -eq 0 ]; then
+    echo "[logyum] finished successfully"
+    echo "[logyum] log: $log_file"
+else
+    echo "[logyum] failed with exit code $yum_exit_code" | tee -a "$log_file" >&2
+    echo "[logyum] log: $log_file" | tee -a "$log_file" >&2
+    exit "$yum_exit_code"
+fi

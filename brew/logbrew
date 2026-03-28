@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+usage() {
+    cat <<'EOF'
+Usage:
+  logbrew update [BREW_OPTIONS...]
+  logbrew upgrade [BREW_OPTIONS...]
+  logbrew install <PACKAGE...> [BREW_OPTIONS...]
+EOF
+    exit "${1:-0}"
+}
+
+if [ $# -lt 1 ]; then
+    usage 1
+fi
+
+subcmd="$1"
+shift
+
+case "$subcmd" in
+    update|upgrade|install) ;;
+    -h|--help) usage 0 ;;
+    *) echo "[logbrew] Unsupported subcommand: $subcmd" >&2; usage 1 ;;
+esac
+
+if ! command -v brew >/dev/null 2>&1; then
+    echo "[logbrew] brew command not found." >&2
+    exit 1
+fi
+
+cmd=(brew "$subcmd" "$@")
+printf -v cmd_display '%q ' "${cmd[@]}"
+
+log_dir="${LOGBREW_LOG_DIR:-${HOME:?HOME not set}/.logbrew}"
+mkdir -p "$log_dir"
+log_file="$log_dir/${subcmd}-$(date +%Y%m%d-%H%M%S).log"
+
+{
+    echo "[logbrew] started: $(date -Iseconds)"
+    echo "[logbrew] command: ${cmd_display% }"
+} | tee -a "$log_file"
+
+set +e
+"${cmd[@]}" 2>&1 | tee -a "$log_file"
+brew_exit_code=${PIPESTATUS[0]}
+set -e
+
+if [ "$brew_exit_code" -eq 0 ]; then
+    echo "[logbrew] finished successfully"
+    echo "[logbrew] log: $log_file"
+else
+    echo "[logbrew] failed with exit code $brew_exit_code" | tee -a "$log_file" >&2
+    echo "[logbrew] log: $log_file" | tee -a "$log_file" >&2
+    exit "$brew_exit_code"
+fi
