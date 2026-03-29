@@ -109,7 +109,7 @@ summarize_update() {
     local -a upgradable_packages=()
     local -a target_packages=()
     local package selected_exclusions summary
-    local upgradable_count
+    local target_count
     local gui_enabled=0
 
     while IFS= read -r package; do
@@ -137,14 +137,14 @@ summarize_update() {
         fi
     fi
 
-    upgradable_count="${#target_packages[@]}"
-    echo "[logapt] update summary: ${upgradable_count} upgradable package(s)" | tee -a "$log_file"
+    target_count="${#target_packages[@]}"
+    echo "[logapt] update summary: ${target_count} upgradable package(s)" | tee -a "$log_file"
     if [ "$gui_enabled" -eq 1 ]; then
         echo "[logapt] GUI list shown (zenity)" | tee -a "$log_file"
     fi
     echo "[logapt] exclude file: $exclude_file" | tee -a "$log_file"
 
-    if [ "$upgradable_count" -gt 0 ]; then
+    if [ "$target_count" -gt 0 ]; then
         local shown=0
         for package in "${target_packages[@]}"; do
             summary="$(package_update_summary "$package")"
@@ -152,8 +152,8 @@ summarize_update() {
             shown=$((shown + 1))
             [ "$shown" -ge 10 ] && break
         done
-        if [ "$upgradable_count" -gt 10 ]; then
-            echo "[logapt]   ...and $((upgradable_count - 10)) more" | tee -a "$log_file"
+        if [ "$target_count" -gt 10 ]; then
+            echo "[logapt]   ...and $((target_count - 10)) more" | tee -a "$log_file"
         fi
     fi
 }
