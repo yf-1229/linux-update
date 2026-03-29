@@ -33,8 +33,15 @@ exclude_file_default="${HOME:?HOME environment variable is not set}/.config/loga
 exclude_file="${LOGAPT_EXCLUDE_FILE:-$exclude_file_default}"
 upgradable_output_cache=""
 declare -A package_summary_cache=()
+declare -A excluded_package_cache=()
+gui_text="${LOGAPT_GUI_TEXT:-Select packages to exclude from future update summaries.}"
+gui_column_exclude="${LOGAPT_GUI_COLUMN_EXCLUDE:-Exclude}"
+gui_column_package="${LOGAPT_GUI_COLUMN_PACKAGE:-Package}"
+gui_column_summary="${LOGAPT_GUI_COLUMN_SUMMARY:-Change summary}"
+gui_ok_label="${LOGAPT_GUI_OK_LABEL:-Apply}"
+gui_cancel_label="${LOGAPT_GUI_CANCEL_LABEL:-Skip}"
 
-sanitize_single_line() {
+collapse_to_single_line() {
     tr '\n' ' ' <<<"$1" | sed 's/[[:space:]]\+/ /g; s/^ //; s/ $//'
 }
 
@@ -44,13 +51,17 @@ load_excluded_packages() {
     fi
 }
 
+cache_excluded_packages() {
+    local excluded
+    excluded_package_cache=()
+    while IFS= read -r excluded; do
+        [ -n "$excluded" ] && excluded_package_cache["$excluded"]=1
+    done < <(load_excluded_packages)
+}
+
 is_excluded_package() {
     local package="$1"
-    local excluded
-    while IFS= read -r excluded; do
-        [ "$excluded" = "$package" ] && return 0
-    done < <(load_excluded_packages)
-    return 1
+    [ -n "${excluded_package_cache[$package]+x}" ]
 }
 
 save_excluded_packages() {
@@ -92,7 +103,7 @@ package_update_summary() {
     new_version="$(awk '{print $2}' <<<"$line")"
     old_version="$(sed -n 's/.*\[upgradable from: \([^]]*\)\].*/\1/p' <<<"$line")"
     description="$(apt show "$package" 2>/dev/null | sed -n 's/^Description: //p' | head -n1)"
-    description="$(sanitize_single_line "${description:-no description}")"
+    description="$(collapse_to_single_line "${description:-no description}")"
     package_summary_cache["$package"]="${old_version:-unknown} -> ${new_version:-unknown} | ${description}"
     echo "${package_summary_cache[$package]}"
 }
@@ -110,12 +121,12 @@ show_gui_and_select_exclusions() {
 
     selected="$(zenity --list --checklist \
         --title="logapt update list" \
-        --text="除外したいパッケージをチェックして「適用」を押してください" \
-        --column="除外" --column="Package" --column="Change summary" \
+        --text="$gui_text" \
+        --column="$gui_column_exclude" --column="$gui_column_package" --column="$gui_column_summary" \
         "${zenity_rows[@]}" \
         --separator="|" \
-        --ok-label="適用" \
-        --cancel-label="スキップ" \
+        --ok-label="$gui_ok_label" \
+        --cancel-label="$gui_cancel_label" \
         --width=1100 --height=640 2>/dev/null || true)"
 
     printf '%s' "$selected"
@@ -133,6 +144,7 @@ summarize_update() {
         [ -n "$package" ] && upgradable_packages+=("$package")
     done < <(collect_upgradable_packages)
 
+    cache_excluded_packages
     for package in "${upgradable_packages[@]}"; do
         if ! is_excluded_package "$package"; then
             target_packages+=("$package")
@@ -145,6 +157,7 @@ summarize_update() {
         if [ -n "$selected_exclusions" ]; then
             IFS='|' read -r -a new_exclusions <<<"$selected_exclusions"
             save_excluded_packages "${new_exclusions[@]}"
+            cache_excluded_packages
             target_packages=()
             for package in "${upgradable_packages[@]}"; do
                 if ! is_excluded_package "$package"; then
