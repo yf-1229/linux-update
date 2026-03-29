@@ -31,6 +31,8 @@ fi
 
 exclude_file_default="${HOME:?HOME environment variable is not set}/.config/logapt/exclude-packages.txt"
 exclude_file="${LOGAPT_EXCLUDE_FILE:-$exclude_file_default}"
+upgradable_output_cache=""
+declare -A package_summary_cache=()
 
 sanitize_single_line() {
     tr '\n' ' ' <<<"$1" | sed 's/[[:space:]]\+/ /g; s/^ //; s/ $//'
@@ -63,8 +65,15 @@ save_excluded_packages() {
     mv "${exclude_file}.tmp" "$exclude_file"
 }
 
+ensure_upgradable_output_cache() {
+    if [ -z "$upgradable_output_cache" ]; then
+        upgradable_output_cache="$(apt list --upgradable 2>/dev/null || true)"
+    fi
+}
+
 collect_upgradable_packages() {
-    apt list --upgradable 2>/dev/null \
+    ensure_upgradable_output_cache
+    printf '%s\n' "$upgradable_output_cache" \
         | sed '/^Listing\.\.\./d;/^[[:space:]]*$/d' \
         | awk -F/ '{print $1}'
 }
@@ -72,12 +81,20 @@ collect_upgradable_packages() {
 package_update_summary() {
     local package="$1"
     local line old_version new_version description
-    line="$(apt list --upgradable 2>/dev/null | sed '/^Listing\.\.\./d' | awk -F/ -v p="$package" '$1==p {print; exit}')"
+
+    if [ -n "${package_summary_cache[$package]+x}" ]; then
+        echo "${package_summary_cache[$package]}"
+        return 0
+    fi
+
+    ensure_upgradable_output_cache
+    line="$(printf '%s\n' "$upgradable_output_cache" | sed '/^Listing\.\.\./d' | awk -F/ -v p="$package" '$1==p {print; exit}')"
     new_version="$(awk '{print $2}' <<<"$line")"
     old_version="$(sed -n 's/.*\[upgradable from: \([^]]*\)\].*/\1/p' <<<"$line")"
     description="$(apt show "$package" 2>/dev/null | sed -n 's/^Description: //p' | head -n1)"
     description="$(sanitize_single_line "${description:-no description}")"
-    echo "${old_version:-unknown} -> ${new_version:-unknown} | ${description}"
+    package_summary_cache["$package"]="${old_version:-unknown} -> ${new_version:-unknown} | ${description}"
+    echo "${package_summary_cache[$package]}"
 }
 
 show_gui_and_select_exclusions() {

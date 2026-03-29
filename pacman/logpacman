@@ -34,6 +34,8 @@ fi
 
 exclude_file_default="${HOME:?HOME environment variable is not set}/.config/logpacman/exclude-packages.txt"
 exclude_file="${LOGPACMAN_EXCLUDE_FILE:-$exclude_file_default}"
+upgradable_output_cache=""
+declare -A package_summary_cache=()
 
 sanitize_single_line() {
     tr '\n' ' ' <<<"$1" | sed 's/[[:space:]]\+/ /g; s/^ //; s/ $//'
@@ -66,19 +68,34 @@ save_excluded_packages() {
     mv "${exclude_file}.tmp" "$exclude_file"
 }
 
+ensure_upgradable_output_cache() {
+    if [ -z "$upgradable_output_cache" ]; then
+        upgradable_output_cache="$(pacman -Qu 2>/dev/null || true)"
+    fi
+}
+
 collect_upgradable_packages() {
-    pacman -Qu 2>/dev/null | sed '/^[[:space:]]*$/d' | awk '{print $1}'
+    ensure_upgradable_output_cache
+    printf '%s\n' "$upgradable_output_cache" | sed '/^[[:space:]]*$/d' | awk '{print $1}'
 }
 
 package_update_summary() {
     local package="$1"
     local line old_version new_version description
-    line="$(pacman -Qu 2>/dev/null | awk -v p="$package" '$1==p {print; exit}')"
+
+    if [ -n "${package_summary_cache[$package]+x}" ]; then
+        echo "${package_summary_cache[$package]}"
+        return 0
+    fi
+
+    ensure_upgradable_output_cache
+    line="$(printf '%s\n' "$upgradable_output_cache" | awk -v p="$package" '$1==p {print; exit}')"
     old_version="$(awk '{print $2}' <<<"$line")"
     new_version="$(awk '{print $4}' <<<"$line")"
     description="$(pacman -Si "$package" 2>/dev/null | sed -n 's/^Description[[:space:]]*:[[:space:]]*//p' | head -n1)"
     description="$(sanitize_single_line "${description:-no description}")"
-    echo "${old_version:-unknown} -> ${new_version:-unknown} | ${description}"
+    package_summary_cache["$package"]="${old_version:-unknown} -> ${new_version:-unknown} | ${description}"
+    echo "${package_summary_cache[$package]}"
 }
 
 show_gui_and_select_exclusions() {
