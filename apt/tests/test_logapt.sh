@@ -52,6 +52,10 @@ trap 'rm -rf "$MOCK_BIN_DIR" "$TMP_LOG_DIR"' EXIT
 
 cat > "$MOCK_BIN_DIR/apt" <<'EOF'
 #!/usr/bin/env bash
+if [ "$1" = "show" ]; then
+echo "Description: ${2} package description"
+exit 0
+fi
 if [ "$1" = "list" ] && [ "$2" = "--upgradable" ]; then
 echo "Listing..."
 echo "curl/stable 8.0 amd64 [upgradable from: 7.0]"
@@ -76,10 +80,20 @@ assert_output_contains "logapt prints log file location" "\[logapt\] log:" \
     env PATH="$MOCK_BIN_DIR:$PATH" LOGAPT_LOG_DIR="$TMP_LOG_DIR" bash "$SCRIPT" update
 assert_output_contains "logapt update shows summary count" "\[logapt\] update summary: 2 upgradable package(s)" \
     env PATH="$MOCK_BIN_DIR:$PATH" LOGAPT_LOG_DIR="$TMP_LOG_DIR" bash "$SCRIPT" update
-assert_output_contains "logapt update shows summarized package names" "\[logapt\]   - curl" \
+assert_output_contains "logapt update shows summarized package names and change details" "\[logapt\]   - curl: 7.0 -> 8.0 | curl package description" \
+    env PATH="$MOCK_BIN_DIR:$PATH" LOGAPT_LOG_DIR="$TMP_LOG_DIR" bash "$SCRIPT" update
+assert_output_contains "logapt update prints exclude file path" "\[logapt\] exclude file:" \
     env PATH="$MOCK_BIN_DIR:$PATH" LOGAPT_LOG_DIR="$TMP_LOG_DIR" bash "$SCRIPT" update
 assert_output_contains "logapt install keeps using apt install" "MOCK apt install curl" \
     env PATH="$MOCK_BIN_DIR:$PATH" LOGAPT_LOG_DIR="$TMP_LOG_DIR" bash "$SCRIPT" install curl
+
+TMP_EXCLUDE_FILE="$(mktemp)"
+echo "curl" > "$TMP_EXCLUDE_FILE"
+assert_output_contains "logapt excluded package is omitted from summary list" "\[logapt\]   - git: 1.0 -> 2.0 | git package description" \
+    env PATH="$MOCK_BIN_DIR:$PATH" LOGAPT_LOG_DIR="$TMP_LOG_DIR" LOGAPT_EXCLUDE_FILE="$TMP_EXCLUDE_FILE" LOGAPT_GUI=0 bash "$SCRIPT" update
+assert_output_contains "logapt excluded package is not printed" "\[logapt\] update summary: 1 upgradable package(s)" \
+    env PATH="$MOCK_BIN_DIR:$PATH" LOGAPT_LOG_DIR="$TMP_LOG_DIR" LOGAPT_EXCLUDE_FILE="$TMP_EXCLUDE_FILE" LOGAPT_GUI=0 bash "$SCRIPT" update
+rm -f "$TMP_EXCLUDE_FILE"
 
 echo
 echo "Results: $PASS passed, $FAIL failed"

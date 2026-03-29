@@ -27,7 +27,8 @@ By adding a shell alias you can make even the plain `apt update` (or `brew updat
   - `logbrew`  — `update`, `upgrade`, `install`
   - `logpacman`— `update` (→ `pacman -Syu`), `install` (→ `pacman -S`)
 - Detailed logs are shown on the terminal **and** saved to a file
-- `update` completes with a short update summary (upgradable package count and sample package names)
+- `update` fetches per-package change details (version diff + short description) and prints summarized list
+- `update` can show a GUI checklist (zenity) and lets you exclude packages from future update lists
 - Log directory is configurable via environment variable (e.g. `LOGAPT_LOG_DIR`)
 
 ---
@@ -99,6 +100,18 @@ LOGAPT_LOG_DIR=/tmp/logapt logapt update
 LOGYUM_LOG_DIR=/tmp/logyum logyum update
 LOGBREW_LOG_DIR=/tmp/logbrew logbrew update
 LOGPACMAN_LOG_DIR=/tmp/logpacman logpacman update
+```
+
+Exclude-file / GUI settings:
+
+```bash
+# apt
+LOGAPT_EXCLUDE_FILE=/tmp/logapt-exclude.txt logapt update
+LOGAPT_GUI=0 logapt update   # disable GUI, terminal summary only
+
+# pacman
+LOGPACMAN_EXCLUDE_FILE=/tmp/logpacman-exclude.txt logpacman update
+LOGPACMAN_GUI=0 logpacman update
 ```
 
 ---

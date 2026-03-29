@@ -32,30 +32,129 @@ if ! command -v pacman >/dev/null 2>&1; then
     exit 1
 fi
 
+exclude_file_default="${HOME:?HOME environment variable is not set}/.config/logpacman/exclude-packages.txt"
+exclude_file="${LOGPACMAN_EXCLUDE_FILE:-$exclude_file_default}"
+
+sanitize_single_line() {
+    tr '\n' ' ' <<<"$1" | sed 's/[[:space:]]\+/ /g; s/^ //; s/ $//'
+}
+
+load_excluded_packages() {
+    if [ -f "$exclude_file" ]; then
+        grep -E '^[^#[:space:]].*' "$exclude_file" 2>/dev/null || true
+    fi
+}
+
+is_excluded_package() {
+    local package="$1"
+    local excluded
+    while IFS= read -r excluded; do
+        [ "$excluded" = "$package" ] && return 0
+    done < <(load_excluded_packages)
+    return 1
+}
+
+save_excluded_packages() {
+    local -a new_packages=("$@")
+    local dir
+    dir="$(dirname "$exclude_file")"
+    mkdir -p "$dir"
+    {
+        load_excluded_packages
+        printf '%s\n' "${new_packages[@]}"
+    } | sed '/^[[:space:]]*$/d' | sort -u > "${exclude_file}.tmp"
+    mv "${exclude_file}.tmp" "$exclude_file"
+}
+
+collect_upgradable_packages() {
+    pacman -Qu 2>/dev/null | sed '/^[[:space:]]*$/d' | awk '{print $1}'
+}
+
+package_update_summary() {
+    local package="$1"
+    local line old_version new_version description
+    line="$(pacman -Qu 2>/dev/null | awk -v p="$package" '$1==p {print; exit}')"
+    old_version="$(awk '{print $2}' <<<"$line")"
+    new_version="$(awk '{print $4}' <<<"$line")"
+    description="$(pacman -Si "$package" 2>/dev/null | sed -n 's/^Description[[:space:]]*:[[:space:]]*//p' | head -n1)"
+    description="$(sanitize_single_line "${description:-no description}")"
+    echo "${old_version:-unknown} -> ${new_version:-unknown} | ${description}"
+}
+
+show_gui_and_select_exclusions() {
+    local -a packages=("$@")
+    local -a zenity_rows=()
+    local selected
+    local package detail
+
+    for package in "${packages[@]}"; do
+        detail="$(package_update_summary "$package")"
+        zenity_rows+=(FALSE "$package" "$detail")
+    done
+
+    selected="$(zenity --list --checklist \
+        --title="logpacman update list" \
+        --text="除外したいパッケージをチェックして「適用」を押してください" \
+        --column="除外" --column="Package" --column="Change summary" \
+        "${zenity_rows[@]}" \
+        --separator="|" \
+        --ok-label="適用" \
+        --cancel-label="スキップ" \
+        --width=1100 --height=640 2>/dev/null || true)"
+
+    printf '%s' "$selected"
+}
+
 summarize_update() {
     local log_file="$1"
-    local updates_output update_count
+    local -a upgradable_packages=()
+    local -a target_packages=()
+    local package selected_exclusions summary
+    local update_count
+    local gui_enabled=0
 
-    set +e
-    updates_output="$(pacman -Qu 2>/dev/null)"
-    set -e
+    while IFS= read -r package; do
+        [ -n "$package" ] && upgradable_packages+=("$package")
+    done < <(collect_upgradable_packages)
 
-    update_count="$(
-        printf '%s\n' "$updates_output" \
-        | sed '/^[[:space:]]*$/d' \
-        | awk 'END { print NR + 0 }'
-    )"
+    for package in "${upgradable_packages[@]}"; do
+        if ! is_excluded_package "$package"; then
+            target_packages+=("$package")
+        fi
+    done
 
+    if [ "${LOGPACMAN_GUI:-1}" = "1" ] && [ -n "${DISPLAY:-}" ] && command -v zenity >/dev/null 2>&1 && [ "${#target_packages[@]}" -gt 0 ]; then
+        gui_enabled=1
+        selected_exclusions="$(show_gui_and_select_exclusions "${target_packages[@]}")"
+        if [ -n "$selected_exclusions" ]; then
+            IFS='|' read -r -a new_exclusions <<<"$selected_exclusions"
+            save_excluded_packages "${new_exclusions[@]}"
+            target_packages=()
+            for package in "${upgradable_packages[@]}"; do
+                if ! is_excluded_package "$package"; then
+                    target_packages+=("$package")
+                fi
+            done
+        fi
+    fi
+
+    update_count="${#target_packages[@]}"
     echo "[logpacman] update summary: ${update_count} upgradable package(s)" | tee -a "$log_file"
+    if [ "$gui_enabled" -eq 1 ]; then
+        echo "[logpacman] GUI list shown (zenity)" | tee -a "$log_file"
+    fi
+    echo "[logpacman] exclude file: $exclude_file" | tee -a "$log_file"
 
     if [ "$update_count" -gt 0 ]; then
-        printf '%s\n' "$updates_output" \
-            | sed '/^[[:space:]]*$/d' \
-            | awk 'NR<=5 { print "[logpacman]   - " $1 }' \
-            | tee -a "$log_file"
-
-        if [ "$update_count" -gt 5 ]; then
-            echo "[logpacman]   ...and $((update_count - 5)) more" | tee -a "$log_file"
+        local shown=0
+        for package in "${target_packages[@]}"; do
+            summary="$(package_update_summary "$package")"
+            echo "[logpacman]   - $package: $summary" | tee -a "$log_file"
+            shown=$((shown + 1))
+            [ "$shown" -ge 10 ] && break
+        done
+        if [ "$update_count" -gt 10 ]; then
+            echo "[logpacman]   ...and $((update_count - 10)) more" | tee -a "$log_file"
         fi
     fi
 }

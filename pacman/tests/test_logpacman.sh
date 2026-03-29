@@ -52,6 +52,10 @@ trap 'rm -rf "$MOCK_BIN_DIR" "$TMP_LOG_DIR"' EXIT
 
 cat > "$MOCK_BIN_DIR/pacman" <<'EOF'
 #!/usr/bin/env bash
+if [ "$1" = "-Si" ]; then
+echo "Description     : ${2} package description"
+exit 0
+fi
 if [ "$1" = "-Qu" ]; then
 echo "curl 7.0 -> 8.0"
 echo "git 1.0 -> 2.0"
@@ -75,10 +79,20 @@ assert_output_contains "logpacman prints log file location" "\[logpacman\] log:"
     env PATH="$MOCK_BIN_DIR:$PATH" LOGPACMAN_LOG_DIR="$TMP_LOG_DIR" bash "$SCRIPT" update
 assert_output_contains "logpacman update shows summary count" "\[logpacman\] update summary: 2 upgradable package(s)" \
     env PATH="$MOCK_BIN_DIR:$PATH" LOGPACMAN_LOG_DIR="$TMP_LOG_DIR" bash "$SCRIPT" update
-assert_output_contains "logpacman update shows summarized package names" "\[logpacman\]   - curl" \
+assert_output_contains "logpacman update shows summarized package names and change details" "\[logpacman\]   - curl: 7.0 -> 8.0 | curl package description" \
+    env PATH="$MOCK_BIN_DIR:$PATH" LOGPACMAN_LOG_DIR="$TMP_LOG_DIR" bash "$SCRIPT" update
+assert_output_contains "logpacman update prints exclude file path" "\[logpacman\] exclude file:" \
     env PATH="$MOCK_BIN_DIR:$PATH" LOGPACMAN_LOG_DIR="$TMP_LOG_DIR" bash "$SCRIPT" update
 assert_output_contains "logpacman install keeps using pacman -S" "MOCK pacman -S curl" \
     env PATH="$MOCK_BIN_DIR:$PATH" LOGPACMAN_LOG_DIR="$TMP_LOG_DIR" bash "$SCRIPT" install curl
+
+TMP_EXCLUDE_FILE="$(mktemp)"
+echo "curl" > "$TMP_EXCLUDE_FILE"
+assert_output_contains "logpacman excluded package is omitted from summary list" "\[logpacman\]   - git: 1.0 -> 2.0 | git package description" \
+    env PATH="$MOCK_BIN_DIR:$PATH" LOGPACMAN_LOG_DIR="$TMP_LOG_DIR" LOGPACMAN_EXCLUDE_FILE="$TMP_EXCLUDE_FILE" LOGPACMAN_GUI=0 bash "$SCRIPT" update
+assert_output_contains "logpacman excluded package is not printed" "\[logpacman\] update summary: 1 upgradable package(s)" \
+    env PATH="$MOCK_BIN_DIR:$PATH" LOGPACMAN_LOG_DIR="$TMP_LOG_DIR" LOGPACMAN_EXCLUDE_FILE="$TMP_EXCLUDE_FILE" LOGPACMAN_GUI=0 bash "$SCRIPT" update
+rm -f "$TMP_EXCLUDE_FILE"
 
 echo
 echo "Results: $PASS passed, $FAIL failed"
