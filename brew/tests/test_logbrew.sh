@@ -57,6 +57,13 @@ exit 0
 EOF
 chmod +x "$MOCK_BIN_DIR/brew"
 
+cat > "$MOCK_BIN_DIR/mock-summary" <<'EOF'
+#!/usr/bin/env bash
+echo "summary-for-$3"
+exit 0
+EOF
+chmod +x "$MOCK_BIN_DIR/mock-summary"
+
 echo "=== Test: brew update/upgrade/install support ==="
 assert_exit "logbrew update exits 0" 0 \
     env PATH="$MOCK_BIN_DIR:$PATH" LOGBREW_LOG_DIR="$TMP_LOG_DIR" bash "$SCRIPT" update
@@ -70,6 +77,10 @@ assert_output_contains "logbrew install forwards multiple packages" "MOCK brew i
     env PATH="$MOCK_BIN_DIR:$PATH" LOGBREW_LOG_DIR="$TMP_LOG_DIR" bash "$SCRIPT" install curl git
 assert_output_contains "logbrew prints log file location" "\[logbrew\] log:" \
     env PATH="$MOCK_BIN_DIR:$PATH" LOGBREW_LOG_DIR="$TMP_LOG_DIR" bash "$SCRIPT" update
+assert_output_contains "logbrew can show scrollable summary UI" "logbrew install package summary" \
+    env PATH="$MOCK_BIN_DIR:$PATH" LOGBREW_LOG_DIR="$TMP_LOG_DIR" LOGBREW_SCROLL_UI=1 PAGER=cat bash "$SCRIPT" install curl
+assert_output_contains "logbrew uses summary command hook" "summary-for-curl" \
+    env PATH="$MOCK_BIN_DIR:$PATH" LOGBREW_LOG_DIR="$TMP_LOG_DIR" LOGBREW_SCROLL_UI=1 LOGBREW_SUMMARY_CMD=mock-summary PAGER=cat bash "$SCRIPT" install curl
 
 echo
 echo "Results: $PASS passed, $FAIL failed"

@@ -57,6 +57,13 @@ exit 0
 EOF
 chmod +x "$MOCK_BIN_DIR/pacman"
 
+cat > "$MOCK_BIN_DIR/mock-summary" <<'EOF'
+#!/usr/bin/env bash
+echo "summary-for-$3"
+exit 0
+EOF
+chmod +x "$MOCK_BIN_DIR/mock-summary"
+
 echo "=== Test: pacman update/install support ==="
 assert_exit "logpacman update exits 0" 0 \
     env PATH="$MOCK_BIN_DIR:$PATH" LOGPACMAN_LOG_DIR="$TMP_LOG_DIR" bash "$SCRIPT" update
@@ -68,6 +75,10 @@ assert_output_contains "logpacman install forwards multiple packages" "MOCK pacm
     env PATH="$MOCK_BIN_DIR:$PATH" LOGPACMAN_LOG_DIR="$TMP_LOG_DIR" bash "$SCRIPT" install curl git
 assert_output_contains "logpacman prints log file location" "\[logpacman\] log:" \
     env PATH="$MOCK_BIN_DIR:$PATH" LOGPACMAN_LOG_DIR="$TMP_LOG_DIR" bash "$SCRIPT" update
+assert_output_contains "logpacman can show scrollable summary UI" "logpacman install package summary" \
+    env PATH="$MOCK_BIN_DIR:$PATH" LOGPACMAN_LOG_DIR="$TMP_LOG_DIR" LOGPACMAN_SCROLL_UI=1 PAGER=cat bash "$SCRIPT" install curl
+assert_output_contains "logpacman uses summary command hook" "summary-for-curl" \
+    env PATH="$MOCK_BIN_DIR:$PATH" LOGPACMAN_LOG_DIR="$TMP_LOG_DIR" LOGPACMAN_SCROLL_UI=1 LOGPACMAN_SUMMARY_CMD=mock-summary PAGER=cat bash "$SCRIPT" install curl
 
 echo
 echo "Results: $PASS passed, $FAIL failed"
