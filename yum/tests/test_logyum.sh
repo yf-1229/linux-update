@@ -57,6 +57,16 @@ exit 0
 EOF
 chmod +x "$MOCK_BIN_DIR/yum"
 
+cat > "$MOCK_BIN_DIR/mock-summary" <<'EOF'
+#!/usr/bin/env bash
+if [ "$#" -ne 3 ]; then
+    exit 1
+fi
+echo "summary-for-$3"
+exit 0
+EOF
+chmod +x "$MOCK_BIN_DIR/mock-summary"
+
 echo "=== Test: yum update/install support ==="
 assert_exit "logyum update exits 0" 0 \
     env PATH="$MOCK_BIN_DIR:$PATH" LOGYUM_LOG_DIR="$TMP_LOG_DIR" bash "$SCRIPT" update
@@ -68,6 +78,10 @@ assert_output_contains "logyum install forwards multiple packages" "MOCK yum ins
     env PATH="$MOCK_BIN_DIR:$PATH" LOGYUM_LOG_DIR="$TMP_LOG_DIR" bash "$SCRIPT" install curl git
 assert_output_contains "logyum prints log file location" "\[logyum\] log:" \
     env PATH="$MOCK_BIN_DIR:$PATH" LOGYUM_LOG_DIR="$TMP_LOG_DIR" bash "$SCRIPT" update
+assert_output_contains "logyum can show scrollable summary UI" "logyum install package summary" \
+    env PATH="$MOCK_BIN_DIR:$PATH" LOGYUM_LOG_DIR="$TMP_LOG_DIR" LOGYUM_SCROLL_UI=1 PAGER=cat bash "$SCRIPT" install curl
+assert_output_contains "logyum uses summary command hook" "summary-for-curl" \
+    env PATH="$MOCK_BIN_DIR:$PATH" LOGYUM_LOG_DIR="$TMP_LOG_DIR" LOGYUM_SCROLL_UI=1 LOGYUM_SUMMARY_CMD=mock-summary PAGER=cat bash "$SCRIPT" install curl
 
 echo
 echo "Results: $PASS passed, $FAIL failed"

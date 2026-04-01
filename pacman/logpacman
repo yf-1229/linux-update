@@ -10,8 +10,73 @@ Usage:
 
   update  -> runs: pacman -Syu
   install -> runs: pacman -S <PACKAGE...>
+
+Environment:
+  LOGPACMAN_SCROLL_UI=1  Show scrollable package summary before running command
+  LOGPACMAN_SUMMARY_CMD  Optional executable to generate summary per package
 EOF
     exit "${1:-0}"
+}
+
+collect_install_packages() {
+    local pkg
+    for pkg in "$@"; do
+        case "$pkg" in
+            -*) ;;
+            *) echo "$pkg" ;;
+        esac
+    done
+}
+
+collect_update_packages() {
+    set +e
+    pacman -Qu 2>/dev/null | awk 'NF >= 1 { print $1 }'
+    set -e
+}
+
+build_summary_line() {
+    local pkg="$1"
+    local summary_cmd="${LOGPACMAN_SUMMARY_CMD:-}"
+    local summary="(summary unavailable)"
+
+    if [ -n "$summary_cmd" ] && command -v "$summary_cmd" >/dev/null 2>&1; then
+        set +e
+        summary="$("$summary_cmd" "pacman" "$subcmd" "$pkg" 2>/dev/null)"
+        set -e
+        [ -n "$summary" ] || summary="(summary unavailable)"
+    fi
+
+    printf '%-30s | %s\n' "$pkg" "$summary"
+}
+
+show_scrollable_ui() {
+    local packages=("$@")
+    local tmp_file pager_cmd
+
+    if [ "${#packages[@]}" -eq 0 ]; then
+        echo "[logpacman] No packages found for summary view."
+        return
+    fi
+
+    tmp_file="$(mktemp)" || {
+        echo "[logpacman] Failed to create temporary file" >&2
+        return 1
+    }
+    {
+        echo "logpacman $subcmd package summary"
+        echo "----------------------------------------"
+        for pkg in "${packages[@]}"; do
+            build_summary_line "$pkg"
+        done
+    } >"$tmp_file"
+
+    pager_cmd="${PAGER:-less}"
+    if command -v "$pager_cmd" >/dev/null 2>&1; then
+        "$pager_cmd" "$tmp_file"
+    else
+        cat "$tmp_file"
+    fi
+    rm -f "$tmp_file"
 }
 
 if [ $# -lt 1 ]; then
@@ -38,6 +103,17 @@ else
     cmd=(pacman -S "$@")
 fi
 printf -v cmd_display '%q ' "${cmd[@]}"
+
+if [ "${LOGPACMAN_SCROLL_UI:-0}" = "1" ]; then
+    mapfile -t packages < <(
+        if [ "$subcmd" = "install" ]; then
+            collect_install_packages "$@"
+        else
+            collect_update_packages
+        fi
+    )
+    show_scrollable_ui "${packages[@]}"
+fi
 
 log_dir="${LOGPACMAN_LOG_DIR:-${HOME:?HOME environment variable is not set}/.logpacman}"
 mkdir -p "$log_dir"

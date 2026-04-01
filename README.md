@@ -91,6 +91,27 @@ logpacman update          # runs: pacman -Syu
 logpacman install curl    # runs: pacman -S curl
 ```
 
+Optional scrollable package summary UI:
+
+```bash
+# Enable summary UI for each wrapper
+LOGAPT_SCROLL_UI=1 logapt update
+LOGYUM_SCROLL_UI=1 logyum update
+LOGBREW_SCROLL_UI=1 logbrew upgrade
+LOGPACMAN_SCROLL_UI=1 logpacman update
+```
+
+Optional summary hook command (for Web/AI summaries):
+
+```bash
+# summary command receives: <manager> <subcommand> <package>
+# and should print a one-line summary
+LOGAPT_SCROLL_UI=1 LOGAPT_SUMMARY_CMD=/usr/local/bin/pkg-summary logapt install curl
+LOGYUM_SCROLL_UI=1 LOGYUM_SUMMARY_CMD=/usr/local/bin/pkg-summary logyum install curl
+LOGBREW_SCROLL_UI=1 LOGBREW_SUMMARY_CMD=/usr/local/bin/pkg-summary logbrew install curl
+LOGPACMAN_SCROLL_UI=1 LOGPACMAN_SUMMARY_CMD=/usr/local/bin/pkg-summary logpacman install curl
+```
+
 Override the log directory:
 
 ```bash
