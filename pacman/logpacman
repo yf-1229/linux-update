@@ -58,7 +58,10 @@ show_scrollable_ui() {
         return
     fi
 
-    tmp_file="$(mktemp)"
+    tmp_file="$(mktemp)" || {
+        echo "[logpacman] Failed to create temporary file" >&2
+        return 1
+    }
     {
         echo "logpacman $subcmd package summary"
         echo "----------------------------------------"

@@ -59,6 +59,9 @@ chmod +x "$MOCK_BIN_DIR/brew"
 
 cat > "$MOCK_BIN_DIR/mock-summary" <<'EOF'
 #!/usr/bin/env bash
+if [ "$#" -ne 3 ]; then
+    exit 1
+fi
 echo "summary-for-$3"
 exit 0
 EOF
